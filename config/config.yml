@@ -20,15 +20,28 @@ api:
   config_uri: "/api/config"
   sys_stat_uri: "/sys/stats"
 
-android:
-  enabled: true
-  apikey: "YOUR_API_KEY"
+apps:
+  default:
+    android:
+      enabled: true
+      apikey: "YOUR_API_KEY"
 
-ios:
-  enabled: false
-  key_path: "key.pem"
-  password: ""
-  production: false
+    ios:
+      enabled: false
+      key_path: "key.pem"
+      password: ""
+      production: false
+
+  paidVersion:
+    android:
+      enabled: true
+      apikey: "YOUR_API_KEY"
+
+    ios:
+      enabled: false
+      key_path: "key.pem"
+      password: ""
+      production: false
 
 log:
   format: "string" # string or json

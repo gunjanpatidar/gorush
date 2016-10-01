@@ -1,22 +1,22 @@
 package config
 
 import (
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"runtime"
+
+	"gopkg.in/yaml.v2"
 )
 
 // ConfYaml is config structure.
 type ConfYaml struct {
-	Core    SectionCore    `yaml:"core"`
-	API     SectionAPI     `yaml:"api"`
-	Android SectionAndroid `yaml:"android"`
-	Ios     SectionIos     `yaml:"ios"`
-	Log     SectionLog     `yaml:"log"`
-	Stat    SectionStat    `yaml:"stat"`
+	Core SectionCore           `yaml:"core"`
+	API  SectionAPI            `yaml:"api"`
+	Apps map[string]SectionApp `yaml:"apps"`
+	Log  SectionLog            `yaml:"log"`
+	Stat SectionStat           `yaml:"stat"`
 }
 
-// SectionCore is sub seciont of config.
+// SectionCore is sub seciton of config.
 type SectionCore struct {
 	Port            string     `yaml:"port"`
 	MaxNotification int64      `yaml:"max_notification"`
@@ -30,7 +30,7 @@ type SectionCore struct {
 	PID             SectionPID `yaml:"pid"`
 }
 
-// SectionAPI is sub seciont of config.
+// SectionAPI is sub seciton of config.
 type SectionAPI struct {
 	PushURI    string `yaml:"push_uri"`
 	StatGoURI  string `yaml:"stat_go_uri"`
@@ -39,13 +39,19 @@ type SectionAPI struct {
 	SysStatURI string `yaml:"sys_stat_uri"`
 }
 
-// SectionAndroid is sub seciont of config.
+// SectionApp is sub section of config
+type SectionApp struct {
+	Android SectionAndroid `yaml:"android"`
+	Ios     SectionIos     `yaml:"ios"`
+}
+
+// SectionAndroid is sub seciton of config.
 type SectionAndroid struct {
 	Enabled bool   `yaml:"enabled"`
 	APIKey  string `yaml:"apikey"`
 }
 
-// SectionIos is sub seciont of config.
+// SectionIos is sub seciton of config.
 type SectionIos struct {
 	Enabled    bool   `yaml:"enabled"`
 	KeyPath    string `yaml:"key_path"`
@@ -53,7 +59,7 @@ type SectionIos struct {
 	Production bool   `yaml:"production"`
 }
 
-// SectionLog is sub seciont of config.
+// SectionLog is sub seciton of config.
 type SectionLog struct {
 	Format      string `yaml:"format"`
 	AccessLog   string `yaml:"access_log"`
@@ -63,7 +69,7 @@ type SectionLog struct {
 	HideToken   bool   `yaml:"hide_token"`
 }
 
-// SectionStat is sub seciont of config.
+// SectionStat is sub seciton of config.
 type SectionStat struct {
 	Engine  string         `yaml:"engine"`
 	Redis   SectionRedis   `yaml:"redis"`
@@ -72,30 +78,30 @@ type SectionStat struct {
 	LevelDB SectionLevelDB `yaml:"leveldb"`
 }
 
-// SectionRedis is sub seciont of config.
+// SectionRedis is sub seciton of config.
 type SectionRedis struct {
 	Addr     string `yaml:"addr"`
 	Password string `yaml:"password"`
 	DB       int    `yaml:"db"`
 }
 
-// SectionBoltDB is sub seciont of config.
+// SectionBoltDB is sub seciton of config.
 type SectionBoltDB struct {
 	Path   string `yaml:"path"`
 	Bucket string `yaml:"bucket"`
 }
 
-// SectionBuntDB is sub seciont of config.
+// SectionBuntDB is sub seciton of config.
 type SectionBuntDB struct {
 	Path string `yaml:"path"`
 }
 
-// SectionLevelDB is sub seciont of config.
+// SectionLevelDB is sub seciton of config.
 type SectionLevelDB struct {
 	Path string `yaml:"path"`
 }
 
-// SectionPID is sub seciont of config.
+// SectionPID is sub seciton of config.
 type SectionPID struct {
 	Enabled  bool   `yaml:"enabled"`
 	Path     string `yaml:"path"`
