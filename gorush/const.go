@@ -8,6 +8,14 @@ const (
 )
 
 const (
+	// AppNameDefault is the name for the default app in the config
+	AppNameDefault = "default"
+
+	// AppNameDynamic is the key for config provided through the command line flags in gorush.PushConf
+	AppNameDynamic = "__dynamic_app"
+)
+
+const (
 	// SucceededPush is log block
 	SucceededPush = "succeeded-push"
 	// FailedPush is log block

@@ -3,14 +3,16 @@ package gorush
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
+	"path/filepath"
+	"sync"
+	"time"
+
 	"github.com/google/go-gcm"
 	apns "github.com/sideshow/apns2"
 	"github.com/sideshow/apns2/certificate"
 	"github.com/sideshow/apns2/payload"
-	"net/http"
-	"net/url"
-	"path/filepath"
-	"time"
 )
 
 // D provide string array
@@ -59,6 +61,7 @@ type PushNotification struct {
 	ContentAvailable bool     `json:"content_available,omitempty"`
 	Sound            string   `json:"sound,omitempty"`
 	Data             D        `json:"data,omitempty"`
+	AppID            string   `json:"data,omitempty"`
 
 	// Android
 	APIKey                string           `json:"api_key,omitempty"`
@@ -80,6 +83,14 @@ type PushNotification struct {
 	Alert      Alert    `json:"alert,omitempty"`
 }
 
+// ApnsClients is collection of apns client connections
+type ApnsClients struct {
+	lock    sync.RWMutex
+	clients map[string]*apns.Client
+}
+
+var apnsClients = &ApnsClients{}
+
 // CheckMessage for check request message
 func CheckMessage(req PushNotification) error {
 	var msg string
@@ -95,6 +106,7 @@ func CheckMessage(req PushNotification) error {
 		return errors.New(msg)
 	}
 
+	// TODO: Looks Wrong
 	if len(req.Tokens) == PlatFormIos && len(req.Tokens[0]) == 0 {
 		msg = "the token must not be empty"
 		LogAccess.Debug(msg)
@@ -134,37 +146,41 @@ func SetProxy(proxy string) error {
 }
 
 // CheckPushConf provide check your yml config.
+// TODO: needs reimplementation
 func CheckPushConf() error {
-	if !PushConf.Ios.Enabled && !PushConf.Android.Enabled {
-		return errors.New("Please enable iOS or Android config in yml config")
-	}
-
-	if PushConf.Ios.Enabled {
-		if PushConf.Ios.KeyPath == "" {
-			return errors.New("Missing iOS certificate path")
+	/*
+		if !PushConf.Ios.Enabled && !PushConf.Android.Enabled {
+			return errors.New("Please enable iOS or Android config in yml config")
 		}
-	}
 
-	if PushConf.Android.Enabled {
-		if PushConf.Android.APIKey == "" {
-			return errors.New("Missing Android API Key")
+		if PushConf.Ios.Enabled {
+			if PushConf.Ios.KeyPath == "" {
+				return errors.New("Missing iOS certificate path")
+			}
 		}
-	}
 
+		if PushConf.Android.Enabled {
+			if PushConf.Android.APIKey == "" {
+				return errors.New("Missing Android API Key")
+			}
+		}
+	*/
 	return nil
 }
 
-// InitAPNSClient use for initialize APNs Client.
-func InitAPNSClient() error {
-	if PushConf.Ios.Enabled {
-		var err error
-		ext := filepath.Ext(PushConf.Ios.KeyPath)
+// initAPNSClient initializes an APNs Client for the given AppID.
+func initAPNSClient(AppID string) (*apns.Client, error) {
+	var err error
+	var apnsClient *apns.Client
+
+	if PushConf.Apps[AppID].Ios.Enabled {
+		ext := filepath.Ext(PushConf.Apps[AppID].Ios.KeyPath)
 
 		switch ext {
 		case ".p12":
-			CertificatePemIos, err = certificate.FromP12File(PushConf.Ios.KeyPath, PushConf.Ios.Password)
+			CertificatePemIos, err = certificate.FromP12File(PushConf.Apps[AppID].Ios.KeyPath, PushConf.Apps[AppID].Ios.Password)
 		case ".pem":
-			CertificatePemIos, err = certificate.FromPemFile(PushConf.Ios.KeyPath, PushConf.Ios.Password)
+			CertificatePemIos, err = certificate.FromPemFile(PushConf.Apps[AppID].Ios.KeyPath, PushConf.Apps[AppID].Ios.Password)
 		default:
 			err = errors.New("Wrong Certificate key extension.")
 		}
@@ -172,17 +188,45 @@ func InitAPNSClient() error {
 		if err != nil {
 			LogError.Error("Cert Error:", err.Error())
 
-			return err
+			return nil, err
 		}
 
-		if PushConf.Ios.Production {
-			ApnsClient = apns.NewClient(CertificatePemIos).Production()
+		if PushConf.Apps[AppID].Ios.Production {
+			apnsClient = apns.NewClient(CertificatePemIos).Production()
 		} else {
-			ApnsClient = apns.NewClient(CertificatePemIos).Development()
+			apnsClient = apns.NewClient(CertificatePemIos).Development()
 		}
 	}
 
-	return nil
+	return apnsClient, err
+}
+
+// GetAPNSClient returns an existing APNs client connection if available else
+// creates a new connection and returns
+//
+// For faster concurrency with locks, double checks have been used
+// (https://www.misfra.me/optimizing-concurrent-map-access-in-go/)
+func GetAPNSClient(AppID string) (*apns.Client, error) {
+	var client *apns.Client
+	var present bool
+	var err error
+
+	apnsClients.lock.RLock()
+	if client, present = apnsClients.clients[AppID]; !present {
+		// The connection wasn't found, so we'll create it.
+		apnsClients.lock.RUnlock()
+		apnsClients.lock.Lock()
+		if client, present = apnsClients.clients[AppID]; !present {
+			client, err = initAPNSClient(AppID)
+
+			apnsClients.clients[AppID] = client
+		}
+		apnsClients.lock.Unlock()
+	} else {
+		apnsClients.lock.RUnlock()
+	}
+
+	return client, err
 }
 
 // InitWorkers for initialize all workers.
@@ -210,13 +254,25 @@ func startWorker() {
 func queueNotification(req RequestPush) int {
 	var count int
 	for _, notification := range req.Notifications {
+
+		// send notification to `default` app, if app not specified
+		if notification.AppID == "" {
+			notification.AppID = AppNameDefault
+		}
+
+		// skip notification if unkown app specified
+		if _, exists := PushConf.Apps[notification.AppID]; !exists {
+			LogError.Error("Unknown app: " + notification.AppID)
+			continue
+		}
+
 		switch notification.Platform {
 		case PlatFormIos:
-			if !PushConf.Ios.Enabled {
+			if !PushConf.Apps[notification.AppID].Ios.Enabled {
 				continue
 			}
 		case PlatFormAndroid:
-			if !PushConf.Android.Enabled {
+			if !PushConf.Apps[notification.AppID].Android.Enabled {
 				continue
 			}
 		}
@@ -332,12 +388,19 @@ func PushToIOS(req PushNotification) bool {
 
 	notification := GetIOSNotification(req)
 
+	// get apns client
+	apnsClient, err := GetAPNSClient(req.AppID)
+	if err != nil {
+		LogPush(FailedPush, "", req, err)
+		isError = true
+		return isError
+	}
+
 	for _, token := range req.Tokens {
 		notification.DeviceToken = token
 
 		// send ios notification
-		res, err := ApnsClient.Push(notification)
-
+		res, err := apnsClient.Push(notification)
 		if err != nil {
 			// apns server error
 			LogPush(FailedPush, token, req, err)
@@ -413,11 +476,8 @@ func GetAndroidNotification(req PushNotification) gcm.HttpMessage {
 func PushToAndroid(req PushNotification) bool {
 	LogAccess.Debug("Start push notification for Android")
 
-	var APIKey string
-
 	// check message
 	err := CheckMessage(req)
-
 	if err != nil {
 		LogError.Error("request error: " + err.Error())
 		return false
@@ -425,12 +485,7 @@ func PushToAndroid(req PushNotification) bool {
 
 	notification := GetAndroidNotification(req)
 
-	if APIKey = PushConf.Android.APIKey; req.APIKey != "" {
-		APIKey = req.APIKey
-	}
-
-	res, err := gcm.SendHttp(APIKey, notification)
-
+	res, err := gcm.SendHttp(req.APIKey, notification)
 	if err != nil {
 		// GCM server error
 		LogError.Error("GCM server error: " + err.Error())

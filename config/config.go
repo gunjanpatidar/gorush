@@ -133,16 +133,6 @@ func BuildDefaultPushConf() ConfYaml {
 	conf.API.ConfigURI = "/api/config"
 	conf.API.SysStatURI = "/sys/stats"
 
-	// Android
-	conf.Android.Enabled = false
-	conf.Android.APIKey = ""
-
-	// iOS
-	conf.Ios.Enabled = false
-	conf.Ios.KeyPath = "key.pem"
-	conf.Ios.Password = ""
-	conf.Ios.Production = false
-
 	// log
 	conf.Log.Format = "string"
 	conf.Log.AccessLog = "stdout"
